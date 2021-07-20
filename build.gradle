@@ -1,0 +1,109 @@
+plugins {
+    id 'java-library'
+    id 'checkstyle'
+    id 'maven-publish'
+    id 'signing'
+}
+
+// stick to java 8
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+
+repositories {
+    // Use jcenter for resolving dependencies.
+    // You can declare any Maven/Ivy/file repository here.
+    jcenter()
+}
+
+checkstyle {
+  toolVersion '8.4'
+  //showViolations = true
+}
+
+dependencies {
+	api 'ca.uhn.hapi.fhir:hapi-fhir-structures-r4:4.1.0'
+	
+    // Use JUnit test framework
+    testImplementation 'junit:junit:4.13'
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier "javadoc"
+    from javadoc.destinationDir
+}
+
+task sourceJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives jar
+    archives sourceJar
+    archives javadocJar
+}
+
+def mavenGroup = 'org.mitre.hapifhir'
+def mavenVersion = '0.0.1'
+
+publishing {
+    publications {
+        medmorphToCibmtr(MavenPublication) {
+            groupId mavenGroup
+            version mavenVersion
+            from components.java
+
+            artifact(sourceJar) {
+                classifier = 'sources'
+            }
+            artifact(javadocJar) {
+                classifier = 'javadoc'
+            }
+            pom {
+                name = 'MedMorph to CIBMTR'
+                description = 'Translation layer to convert a MedMorph Reporting Bundle into CIBMTR transactions'
+                url = 'https://github.com/mcode/medmorph-to-cibmtr'
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:git://github.com/mcode/medmorph-to-cibmtr.git'
+                    developerConnection = 'scm:git:ssh://github.com:mcode/medmorph-to-cibmtr.git'
+                    url = 'http://github.com/mcode/medmorph-to-cibmtr/tree/master'
+                }
+                developers {
+                    developer {
+                        name = 'Dylan Hall'
+                        email = 'dehall@mitre.org'
+                        organization = 'The MITRE Corporation'
+                        organizationUrl = 'http://www.mitre.org/'
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            def snapshotUrl = 'https://oss.sonatype.org/content/repositories/snapshots'
+            def releaseUrl = 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+            url mavenVersion.endsWith('SNAPSHOT') ? snapshotUrl : releaseUrl
+            credentials {
+                def user = project.hasProperty('ossrhUsername') ? ossrhUsername : ''
+                def pw = project.hasProperty('ossrhPassword') ? ossrhPassword : ''
+                username user
+                password pw 
+            }
+        }
+    }
+}
+
+signing {
+    required { project.hasProperty('signingKey') }
+    def signingKey = findProperty("signingKey")
+    def signingPassword = findProperty("signingPassword")
+    useInMemoryPgpKeys(signingKey, signingPassword)
+    sign publishing.publications.medmorphToCibmtr
+}
