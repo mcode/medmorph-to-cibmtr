@@ -33,8 +33,8 @@ public class MedMorphToCIBMTR {
           JSONObject cridRequestBody = new JSONObject();
           cridRequestBody.put("ccn", "12345");
           JSONObject patientJson = new JSONObject();
-          patientJson.put("firstName", pat.getName().get(0));
-          patientJson.put("lastName", pat.getName().get(1));
+          patientJson.put("firstName", pat.getName().get(0).getGiven().get(0));
+          patientJson.put("lastName", pat.getName().get(0).getFamily());
           patientJson.put("birthdate", pat.getBirthDate().toString());
           patientJson.put("gender", pat.getGender().getDisplay());
           cridRequestBody.put("patient", patientJson);
@@ -76,7 +76,6 @@ public class MedMorphToCIBMTR {
             identifierObject.put("system", "http://cibmtr.org/identifier/CRID");
             identifierObject.put("value", crid);
             patientRequestBody.put("identifier", identifierArray);
-
           } else {
             return null;
           }
