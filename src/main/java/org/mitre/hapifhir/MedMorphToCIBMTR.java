@@ -1,6 +1,7 @@
 package org.mitre.hapifhir;
 
 import java.util.List;
+import java.util.Map;
 import java.net.URL;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
@@ -96,6 +97,19 @@ public class MedMorphToCIBMTR {
       identifierObject.put("value", crid);
       identifierArray.put(identifierObject);
       patientRequestBody.put("identifier", identifierArray);
+
+      OutputStream os = patientConnection.getOutputStream();
+      byte[] input = patientRequestBody.toString().getBytes("utf-8");
+      os.write(input, 0, input.length);
+
+      int responseCode = patientConnection.getResponseCode();
+      if (responseCode == 200) {
+        // Location header response field contains a URL that includes the resource id after 'Patient/'
+        Map<String, List<String>> map = patientConnection.getHeaderFields();
+        String location = map.get("Location").get(0);
+        int index = location.indexOf("Patient/");
+        if (index > 0) return location.substring(index + 8);
+      }
     } catch (Exception e) {
       return null;
     }
