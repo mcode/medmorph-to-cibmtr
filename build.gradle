@@ -109,3 +109,7 @@ signing {
     useInMemoryPgpKeys(signingKey, signingPassword)
     sign publishing.publications.medmorphToCibmtr
 }
+
+test {
+    testLogging.showStandardStreams = true
+}
