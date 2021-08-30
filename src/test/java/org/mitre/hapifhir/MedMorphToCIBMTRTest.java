@@ -2,7 +2,10 @@ package org.mitre.hapifhir;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.Rule;
 import static org.junit.Assert.assertEquals;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import com.github.tomakehurst.wiremock.junit.WireMockRule;
 
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Patient;
@@ -14,12 +17,14 @@ import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Quantity;
 
 public class MedMorphToCIBMTRTest {
+  @Rule
+  public WireMockRule wireMockRule = new WireMockRule(4444);
 
   Bundle medmorphReport;
   Patient patient;
   MedMorphToCIBMTR medmorphToCIBMTR;
-  String expectedCrid = "7732993161784245";
-  String expectedResourceId = "6900318524467287";
+  String expectedCrid = "1982897480019337";
+  String expectedResourceId = "8557319952834071";
 
   @Before
   public void setUp() {
@@ -53,22 +58,32 @@ public class MedMorphToCIBMTRTest {
     ob2.getValueQuantity().setValue(68.2);
     medmorphReport.addEntry().setResource(ob2);
 
-    medmorphToCIBMTR = new MedMorphToCIBMTR("http://pathways.mitre.org:4444/", "1234");
+    medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/", "1234");
   }
 
-  @Test
-  public void convertTest() {
-    medmorphToCIBMTR.convert(medmorphReport, "");
-  }
+  // Uncomment the test below to post bundle to test service hosted on pathways.mitre.org
+  // @Test
+  // public void convertTest() {
+  //   MedMorphToCIBMTR testService = new MedMorphToCIBMTR("http://pathways.mitre.org:4444/", "1234");
+  //   testService.convert(medmorphReport, "");
+  // }
 
   @Test
   public void getCridTest() {
+    stubFor(put(urlMatching("/CRID"))
+      .willReturn(aResponse()
+        .withBody("{\"perfectMatch\":[{\"matchedCriteria\":[\"firstName\",\"lastName\",\"gender\",\"birthDate\"],\"matchType\":\"Perfect1\",\"crid\":1982897480019337}]}")));
+
     Number actualCrid = medmorphToCIBMTR.getCrid("", patient);
     assertEquals(expectedCrid, actualCrid.toString());
   }
 
   @Test
   public void postPatientTest() {
+    stubFor(post(urlMatching("/Patient"))
+      .willReturn(aResponse()
+        .withHeader("Location", "http://localhost:4444/Patient/" + expectedResourceId)));
+
     String actualResourceId = medmorphToCIBMTR.postPatient("", expectedCrid);
     assertEquals(expectedResourceId, actualResourceId);
   }
