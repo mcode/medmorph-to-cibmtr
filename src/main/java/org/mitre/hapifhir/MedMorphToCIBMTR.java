@@ -147,7 +147,7 @@ public class MedMorphToCIBMTR {
     }
   }
 
-  private JSONArray getObservationEntries(List<BundleEntryComponent> observationEntries, String resourceId) {
+  protected JSONArray getObservationEntries(List<BundleEntryComponent> observationEntries, String resourceId) {
     JSONArray entryArray = new JSONArray();
 
     for (BundleEntryComponent entry : observationEntries) {
@@ -186,12 +186,12 @@ public class MedMorphToCIBMTR {
     return entryArray;
   }
 
-  private JSONObject getMeta() {
+  protected JSONObject getMeta() {
     JSONObject metaObject = new JSONObject();
     JSONArray securityArray = new JSONArray();
     JSONObject securityObject = new JSONObject();
     securityObject.put("system", "http://cibmtr.org/codesystem/transplant-center");
-    securityObject.put("code", "rc_12001");
+    securityObject.put("code", "rc_" + ccn);
     securityArray.put(securityObject);
     metaObject.put("security", securityArray);
 

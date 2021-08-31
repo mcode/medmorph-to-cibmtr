@@ -15,6 +15,8 @@ import org.hl7.fhir.r4.model.Enumerations.AdministrativeGender;
 import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Quantity;
+import org.json.JSONObject;
+import org.json.JSONArray;
 
 public class MedMorphToCIBMTRTest {
   @Rule
@@ -25,6 +27,7 @@ public class MedMorphToCIBMTRTest {
   MedMorphToCIBMTR medmorphToCIBMTR;
   String expectedCrid = "1982897480019337";
   String expectedResourceId = "8557319952834071";
+  String expectedCcn = "12001";
 
   @Before
   public void setUp() {
@@ -58,7 +61,7 @@ public class MedMorphToCIBMTRTest {
     ob2.getValueQuantity().setValue(68.2);
     medmorphReport.addEntry().setResource(ob2);
 
-    medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/", "1234");
+    medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/", expectedCcn);
   }
 
   // Uncomment the test below to post bundle to test service hosted on pathways.mitre.org
@@ -86,5 +89,13 @@ public class MedMorphToCIBMTRTest {
 
     String actualResourceId = medmorphToCIBMTR.postPatient("", expectedCrid);
     assertEquals(expectedResourceId, actualResourceId);
+  }
+
+  @Test
+  public void getMetaTest() {
+    JSONObject metaObject = medmorphToCIBMTR.getMeta();
+    JSONArray securityArray = metaObject.getJSONArray("security");
+    JSONObject securityObject = securityArray.getJSONObject(0);
+    assertEquals(securityObject.getString("code"), "rc_" + expectedCcn);
   }
 }
