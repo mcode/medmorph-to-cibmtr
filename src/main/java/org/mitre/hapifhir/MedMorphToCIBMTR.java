@@ -57,7 +57,7 @@ public class MedMorphToCIBMTR {
       HttpPut httpPut = new HttpPut(cibmtrUrl + "CRID");
       httpPut.setHeader("Accept", "application/json");
       httpPut.setHeader("Content-type", "application/json");
-      httpPut.setHeader("Authorization", "Bearer " + authToken);
+      httpPut.setHeader("Authorization", authToken);
 
       JSONObject cridRequestBody = new JSONObject();
       cridRequestBody.put("ccn", ccn);
@@ -93,7 +93,7 @@ public class MedMorphToCIBMTR {
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Patient");
       httpPost.setHeader("Content-Type", "application/fhir+json");
-      httpPost.setHeader("Authorization", "Bearer " + authToken);
+      httpPost.setHeader("Authorization", authToken);
 
       JSONObject patientRequestBody = new JSONObject();
       patientRequestBody.put("resourceType", "Patient");
@@ -132,7 +132,7 @@ public class MedMorphToCIBMTR {
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Bundle");
       httpPost.setHeader("Content-Type", "application/fhir+json");
-      httpPost.setHeader("Authorization", "Bearer " + authToken);
+      httpPost.setHeader("Authorization", authToken);
 
       JSONObject bundleRequestBody = new JSONObject();
       bundleRequestBody.put("resourceType", "Bundle");
