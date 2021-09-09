@@ -1,7 +1,5 @@
 package org.mitre.hapifhir;
 
-import java.lang.reflect.Field;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.Rule;
@@ -70,13 +68,6 @@ public class MedMorphToCIBMTRTest {
       .setEndpoint("http://localhost:4444/fhir"));
 
     medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/");
-    try {
-      Field ccn = medmorphToCIBMTR.getClass().getDeclaredField("ccn");
-      ccn.setAccessible(true);
-      ccn.set(medmorphToCIBMTR, expectedCcn);
-    } catch (Exception e) {
-      System.out.println(e);
-    }
   }
 
   // Uncomment the test below to post bundle to test service hosted on pathways.mitre.org
@@ -92,7 +83,7 @@ public class MedMorphToCIBMTRTest {
       .willReturn(aResponse()
         .withBody("{\"perfectMatch\":[{\"matchedCriteria\":[\"firstName\",\"lastName\",\"gender\",\"birthDate\"],\"matchType\":\"Perfect1\",\"crid\":1982897480019337}]}")));
 
-    Number actualCrid = medmorphToCIBMTR.getCrid(patient);
+    Number actualCrid = medmorphToCIBMTR.getCrid(expectedCcn, "", patient);
     assertEquals(expectedCrid, actualCrid.toString());
   }
 
@@ -102,13 +93,13 @@ public class MedMorphToCIBMTRTest {
       .willReturn(aResponse()
         .withHeader("Location", "http://localhost:4444/Patient/" + expectedResourceId)));
 
-    String actualResourceId = medmorphToCIBMTR.postPatient(expectedCrid);
+    String actualResourceId = medmorphToCIBMTR.postPatient(expectedCcn, "", expectedCrid);
     assertEquals(expectedResourceId, actualResourceId);
   }
 
   @Test
   public void getMetaTest() {
-    JSONObject metaObject = medmorphToCIBMTR.getMeta();
+    JSONObject metaObject = medmorphToCIBMTR.getMeta(expectedCcn);
     JSONArray securityArray = metaObject.getJSONArray("security");
     JSONObject securityObject = securityArray.getJSONObject(0);
     assertEquals(securityObject.getString("code"), "rc_" + expectedCcn);

@@ -35,8 +35,6 @@ import org.apache.http.util.EntityUtils;
 
 public class MedMorphToCIBMTR {
   private String cibmtrUrl;
-  private String ccn;
-  private String authToken;
 
   public MedMorphToCIBMTR(String cibmtrUrl) {
     this.cibmtrUrl = cibmtrUrl;
@@ -44,9 +42,8 @@ public class MedMorphToCIBMTR {
   }
 
   public void convert(Bundle medmorphReport, MessageHeader messageHeader, String authToken) {
-    ccn = getCcn(messageHeader);
+    String ccn = getCcn(messageHeader);
     if (ccn == null) return;
-    this.authToken = authToken;
 
     // https://fhir.nmdp.org/ig/cibmtr-reporting/CIBMTR_Direct_FHIR_API_Connection_Guide_STU3.pdf
     if (medmorphReport.hasEntry()) {
@@ -55,15 +52,15 @@ public class MedMorphToCIBMTR {
       if (patientEntry == null) return;
 
       Patient patient = (Patient) patientEntry.getResource();
-      Number crid = getCrid(patient);
-      String resourceId = postPatient(crid.toString());
+      Number crid = getCrid(ccn, authToken, patient);
+      String resourceId = postPatient(ccn, authToken, crid.toString());
 
-      if (resourceId != null) postBundle(entriesList, resourceId);
+      if (resourceId != null) postBundle(ccn, authToken, entriesList, resourceId);
     }
   }
 
   // Register patient with CIBMTR and returns CRID
-  protected Number getCrid(Patient patient) {
+  protected Number getCrid(String ccn, String authToken, Patient patient) {
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPut httpPut = new HttpPut(cibmtrUrl + "CRID");
       httpPut.setHeader("Accept", "application/json");
@@ -98,7 +95,7 @@ public class MedMorphToCIBMTR {
   }
 
   // POST Patient resource with CRID and return resource id
-  protected String postPatient(String crid) {
+  protected String postPatient(String ccn, String authToken, String crid) {
     if (crid == null) return null;
 
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
@@ -108,7 +105,7 @@ public class MedMorphToCIBMTR {
 
       JSONObject patientRequestBody = new JSONObject();
       patientRequestBody.put("resourceType", "Patient");
-      patientRequestBody.put("meta", getMeta());
+      patientRequestBody.put("meta", getMeta(ccn));
       patientRequestBody.put("text", (new JSONObject()).put("status", "empty"));
       JSONArray identifierArray = new JSONArray();
       JSONObject identifierObject = new JSONObject();
@@ -138,7 +135,7 @@ public class MedMorphToCIBMTR {
   }
 
   // Post bundle of observations
-  protected void postBundle(List<BundleEntryComponent> entries, String resourceId) {
+  protected void postBundle(String ccn, String authToken, List<BundleEntryComponent> entries, String resourceId) {
     List<BundleEntryComponent> observationEntries = entries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Observation).collect(Collectors.toList());
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Bundle");
@@ -148,7 +145,7 @@ public class MedMorphToCIBMTR {
       JSONObject bundleRequestBody = new JSONObject();
       bundleRequestBody.put("resourceType", "Bundle");
       bundleRequestBody.put("type", "transaction");
-      bundleRequestBody.put("entry", getObservationEntries(observationEntries, resourceId));
+      bundleRequestBody.put("entry", getObservationEntries(ccn, observationEntries, resourceId));
 
       StringEntity stringEntity = new StringEntity(bundleRequestBody.toString());
       httpPost.setEntity(stringEntity);
@@ -158,7 +155,7 @@ public class MedMorphToCIBMTR {
     }
   }
 
-  protected JSONArray getObservationEntries(List<BundleEntryComponent> observationEntries, String resourceId) {
+  protected JSONArray getObservationEntries(String ccn, List<BundleEntryComponent> observationEntries, String resourceId) {
     JSONArray entryArray = new JSONArray();
 
     for (BundleEntryComponent entry : observationEntries) {
@@ -171,7 +168,7 @@ public class MedMorphToCIBMTR {
       Observation observation = (Observation)entry.getResource();
       JSONObject observationResourceObject = new JSONObject();
       observationResourceObject.put("resourceType", "Observation");
-      observationResourceObject.put("meta", getMeta());
+      observationResourceObject.put("meta", getMeta(ccn));
       observationResourceObject.put("subject", (new JSONObject()).put("reference", "Patient/" + resourceId));
       observationResourceObject.put("effectiveDateTime", observation.getEffectiveDateTimeType().dateTimeValue().getValue());
       CodeableConcept code = observation.getCode();
@@ -197,7 +194,7 @@ public class MedMorphToCIBMTR {
     return entryArray;
   }
 
-  protected JSONObject getMeta() {
+  protected JSONObject getMeta(String ccn) {
     JSONObject metaObject = new JSONObject();
     JSONArray securityArray = new JSONArray();
     JSONObject securityObject = new JSONObject();
