@@ -45,6 +45,7 @@ public class MedMorphToCIBMTR {
 
   public void convert(Bundle medmorphReport, MessageHeader messageHeader, String authToken) {
     ccn = getCcn(messageHeader);
+    if (ccn == null) return;
     this.authToken = authToken;
 
     // https://fhir.nmdp.org/ig/cibmtr-reporting/CIBMTR_Direct_FHIR_API_Connection_Guide_STU3.pdf
