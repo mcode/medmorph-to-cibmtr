@@ -1,11 +1,19 @@
 package org.mitre.hapifhir;
 
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Map;
 import java.net.URL;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Properties;
+
 import org.hl7.fhir.r4.model.Bundle;
+import org.hl7.fhir.r4.model.MessageHeader;
 import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
 import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.ResourceType;
@@ -24,19 +32,21 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
-import java.util.stream.Collectors;
 
 public class MedMorphToCIBMTR {
   private String cibmtrUrl;
   private String ccn;
+  private String authToken;
 
-  public MedMorphToCIBMTR(String cibmtrUrl, String ccn) {
+  public MedMorphToCIBMTR(String cibmtrUrl) {
     this.cibmtrUrl = cibmtrUrl;
     if (!this.cibmtrUrl.endsWith("/")) this.cibmtrUrl += "/";
-    this.ccn = ccn;
   }
 
-  public void convert(Bundle medmorphReport, String authToken) {
+  public void convert(Bundle medmorphReport, MessageHeader messageHeader, String authToken) {
+    ccn = getCcn(messageHeader);
+    this.authToken = authToken;
+
     // https://fhir.nmdp.org/ig/cibmtr-reporting/CIBMTR_Direct_FHIR_API_Connection_Guide_STU3.pdf
     if (medmorphReport.hasEntry()) {
       List<BundleEntryComponent> entriesList = medmorphReport.getEntry();
@@ -44,15 +54,15 @@ public class MedMorphToCIBMTR {
       if (patientEntry == null) return;
 
       Patient patient = (Patient) patientEntry.getResource();
-      Number crid = getCrid(authToken, patient);
-      String resourceId = postPatient(authToken, crid.toString());
+      Number crid = getCrid(patient);
+      String resourceId = postPatient(crid.toString());
 
-      if (resourceId != null) postBundle(authToken, entriesList, resourceId);
+      if (resourceId != null) postBundle(entriesList, resourceId);
     }
   }
 
   // Register patient with CIBMTR and returns CRID
-  protected Number getCrid(String authToken, Patient patient) {
+  protected Number getCrid(Patient patient) {
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPut httpPut = new HttpPut(cibmtrUrl + "CRID");
       httpPut.setHeader("Accept", "application/json");
@@ -87,7 +97,7 @@ public class MedMorphToCIBMTR {
   }
 
   // POST Patient resource with CRID and return resource id
-  protected String postPatient(String authToken, String crid) {
+  protected String postPatient(String crid) {
     if (crid == null) return null;
 
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
@@ -127,7 +137,7 @@ public class MedMorphToCIBMTR {
   }
 
   // Post bundle of observations
-  protected void postBundle(String authToken, List<BundleEntryComponent> entries, String resourceId) {
+  protected void postBundle(List<BundleEntryComponent> entries, String resourceId) {
     List<BundleEntryComponent> observationEntries = entries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Observation).collect(Collectors.toList());
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Bundle");
@@ -196,5 +206,17 @@ public class MedMorphToCIBMTR {
     metaObject.put("security", securityArray);
 
     return metaObject;
+  }
+
+  // Returns CCN after mapping message header source
+  protected String getCcn(MessageHeader messageHeader) {
+    try (InputStream input = getClass().getClassLoader().getResourceAsStream("ccn-mapping.properties")) {
+      Properties prop = new Properties();
+      prop.load(input);
+
+      return prop.getProperty(messageHeader.getSource().getEndpoint());
+    } catch (Exception e) {
+      return null;
+    }
   }
 }
