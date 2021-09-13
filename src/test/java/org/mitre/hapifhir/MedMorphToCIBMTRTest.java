@@ -6,28 +6,35 @@ import org.junit.Rule;
 import static org.junit.Assert.assertEquals;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import com.github.tomakehurst.wiremock.junit.WireMockRule;
+import java.util.List;
+import java.util.ArrayList;
 
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.DateType;
 import org.hl7.fhir.r4.model.DateTimeType;
 import org.hl7.fhir.r4.model.Enumerations.AdministrativeGender;
+import org.hl7.fhir.r4.model.Identifier;
+import org.hl7.fhir.r4.model.MessageHeader;
 import org.hl7.fhir.r4.model.Observation;
+import org.hl7.fhir.r4.model.Organization;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Quantity;
-import org.json.JSONObject;
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MedMorphToCIBMTRTest {
   @Rule
   public WireMockRule wireMockRule = new WireMockRule(4444);
 
   Bundle medmorphReport;
+  MessageHeader messageHeader;
   Patient patient;
   MedMorphToCIBMTR medmorphToCIBMTR;
   String expectedCrid = "1982897480019337";
   String expectedResourceId = "8557319952834071";
   String expectedCcn = "12001";
+  String orgId = "test-org";
 
   @Before
   public void setUp() {
@@ -38,6 +45,22 @@ public class MedMorphToCIBMTRTest {
     patient.setGender(AdministrativeGender.MALE);
     patient.setBirthDateElement(new DateType("2000-01-01"));
     medmorphReport.addEntry().setResource(patient);
+
+    messageHeader = new MessageHeader();
+    messageHeader.setSource(new MessageHeader.MessageSourceComponent()
+      .setEndpoint("http://localhost:4444/fhir"));
+    messageHeader.setSender(new Reference().setReference("Organization/" + orgId));
+    medmorphReport.addEntry().setResource(messageHeader);
+
+    Organization organization = new Organization();
+    organization.setId(orgId);
+    List<Identifier> ids = new ArrayList<Identifier>();
+    Identifier ccnId = new Identifier();
+    ccnId.setSystem("http://cibmtr.org/codesystem/transplant-center");
+    ccnId.setValue(expectedCcn);
+    ids.add(ccnId);
+    organization.setIdentifier(ids);
+    medmorphReport.addEntry().setResource(organization);
 
     Observation ob1 = new Observation();
     ob1.setSubject(new Reference("Patient/" + expectedResourceId));
@@ -61,14 +84,14 @@ public class MedMorphToCIBMTRTest {
     ob2.getValueQuantity().setValue(68.2);
     medmorphReport.addEntry().setResource(ob2);
 
-    medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/", expectedCcn);
+    medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/");
   }
 
   // Uncomment the test below to post bundle to test service hosted on pathways.mitre.org
   // @Test
   // public void convertTest() {
-  //   MedMorphToCIBMTR testService = new MedMorphToCIBMTR("http://pathways.mitre.org:4444/", "1234");
-  //   testService.convert(medmorphReport, "");
+  //   MedMorphToCIBMTR testService = new MedMorphToCIBMTR("http://pathways.mitre.org:4444/");
+  //   testService.convert(medmorphReport, messageHeader, "");
   // }
 
   @Test
@@ -77,7 +100,7 @@ public class MedMorphToCIBMTRTest {
       .willReturn(aResponse()
         .withBody("{\"perfectMatch\":[{\"matchedCriteria\":[\"firstName\",\"lastName\",\"gender\",\"birthDate\"],\"matchType\":\"Perfect1\",\"crid\":1982897480019337}]}")));
 
-    Number actualCrid = medmorphToCIBMTR.getCrid("", patient);
+    Number actualCrid = medmorphToCIBMTR.getCrid("", expectedCcn, patient);
     assertEquals(expectedCrid, actualCrid.toString());
   }
 
@@ -87,15 +110,21 @@ public class MedMorphToCIBMTRTest {
       .willReturn(aResponse()
         .withHeader("Location", "http://localhost:4444/Patient/" + expectedResourceId)));
 
-    String actualResourceId = medmorphToCIBMTR.postPatient("", expectedCrid);
+    String actualResourceId = medmorphToCIBMTR.postPatient("", expectedCcn, expectedCrid);
     assertEquals(expectedResourceId, actualResourceId);
   }
 
   @Test
   public void getMetaTest() {
-    JSONObject metaObject = medmorphToCIBMTR.getMeta();
+    JSONObject metaObject = medmorphToCIBMTR.getMeta(expectedCcn);
     JSONArray securityArray = metaObject.getJSONArray("security");
     JSONObject securityObject = securityArray.getJSONObject(0);
     assertEquals(securityObject.getString("code"), "rc_" + expectedCcn);
+  }
+
+  @Test
+  public void getCcnTest() {
+    String actualCcn = medmorphToCIBMTR.getCcn(medmorphReport.getEntry(), messageHeader);
+    assertEquals(actualCcn, expectedCcn);
   }
 }

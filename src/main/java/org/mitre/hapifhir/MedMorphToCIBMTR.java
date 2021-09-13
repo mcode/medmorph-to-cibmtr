@@ -18,16 +18,21 @@ import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.Coding;
+import org.hl7.fhir.r4.model.Identifier;
 import org.hl7.fhir.r4.model.MessageHeader;
 import org.hl7.fhir.r4.model.Observation;
+import org.hl7.fhir.r4.model.Organization;
 import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.Quantity;
+import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.ResourceType;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MedMorphToCIBMTR {
+  private static final String CCN_SYSTEM = "http://cibmtr.org/codesystem/transplant-center";
+  private static final String CRID_SYSTEM = "http://cibmtr.org/identifier/CRID";
   private String cibmtrUrl;
 
   public MedMorphToCIBMTR(String cibmtrUrl) {
@@ -102,7 +107,7 @@ public class MedMorphToCIBMTR {
       JSONArray identifierArray = new JSONArray();
       JSONObject identifierObject = new JSONObject();
       identifierObject.put("use", "official");
-      identifierObject.put("system", "http://cibmtr.org/identifier/CRID");
+      identifierObject.put("system", CRID_SYSTEM);
       identifierObject.put("value", crid);
       identifierArray.put(identifierObject);
       patientRequestBody.put("identifier", identifierArray);
@@ -190,7 +195,7 @@ public class MedMorphToCIBMTR {
     JSONObject metaObject = new JSONObject();
     JSONArray securityArray = new JSONArray();
     JSONObject securityObject = new JSONObject();
-    securityObject.put("system", "http://cibmtr.org/codesystem/transplant-center");
+    securityObject.put("system", CCN_SYSTEM);
     securityObject.put("code", "rc_" + ccn);
     securityArray.put(securityObject);
     metaObject.put("security", securityArray);
@@ -200,6 +205,30 @@ public class MedMorphToCIBMTR {
 
   // Extracts CCN from MessageHeader.sender.identifier
   protected String getCcn(List<BundleEntryComponent> bundleEntries, MessageHeader messageHeader) {
+    Reference sender = messageHeader.getSender();
+    String orgReference = sender.getReference();
+
+    // Assuming the organization reference is 'Organization/id'
+    if (!orgReference.contains("Organization/")) return null;
+    String orgId = orgReference.substring(13);
+    BundleEntryComponent orgEntry = bundleEntries.stream().filter(entry ->
+      entry.getResource().getId() != null
+      && entry.getResource().getId().equals(orgId)
+    ).findAny().orElse(null);
+    if (orgEntry == null) return null;
+
+    Organization orgResource = (Organization) orgEntry.getResource();
+    List<Identifier> ids = orgResource.getIdentifier();
+    if (ids != null) {
+      for (Identifier id : ids) {
+        String system = id.getSystem();
+        String value = id.getValue();
+        if (system != null && value != null) {
+          if (system == CCN_SYSTEM) return value;
+        }
+      }
+    }
+
     return null;
   }
 }
