@@ -40,27 +40,18 @@ public class MedMorphToCIBMTRTest {
   public void setUp() {
     medmorphReport = new Bundle();
 
-    patient = new Patient();
-    patient.addName().setFamily("Doe").addGiven("John");
-    patient.setGender(AdministrativeGender.MALE);
-    patient.setBirthDateElement(new DateType("2000-01-01"));
-    medmorphReport.addEntry().setResource(patient);
-
     messageHeader = new MessageHeader();
     messageHeader.setSource(new MessageHeader.MessageSourceComponent()
       .setEndpoint("http://localhost:4444/fhir"));
     messageHeader.setSender(new Reference().setReference("Organization/" + orgId));
     medmorphReport.addEntry().setResource(messageHeader);
 
-    Organization organization = new Organization();
-    organization.setId(orgId);
-    List<Identifier> ids = new ArrayList<Identifier>();
-    Identifier ccnId = new Identifier();
-    ccnId.setSystem("http://cibmtr.org/codesystem/transplant-center");
-    ccnId.setValue(expectedCcn);
-    ids.add(ccnId);
-    organization.setIdentifier(ids);
-    medmorphReport.addEntry().setResource(organization);
+    Bundle contentBundle = new Bundle();
+    patient = new Patient();
+    patient.addName().setFamily("Doe").addGiven("John");
+    patient.setGender(AdministrativeGender.MALE);
+    patient.setBirthDateElement(new DateType("2000-01-01"));
+    contentBundle.addEntry().setResource(patient);
 
     Observation ob1 = new Observation();
     ob1.setSubject(new Reference("Patient/" + expectedResourceId));
@@ -71,7 +62,7 @@ public class MedMorphToCIBMTRTest {
     ob1.getValueQuantity().setSystem("http://unitsofmeasure.org");
     ob1.getValueQuantity().setUnit("cm");
     ob1.getValueQuantity().setValue(69.8);
-    medmorphReport.addEntry().setResource(ob1);
+    contentBundle.addEntry().setResource(ob1);
 
     Observation ob2 = new Observation();
     ob2.setSubject(new Reference("Patient/" + expectedResourceId));
@@ -82,7 +73,18 @@ public class MedMorphToCIBMTRTest {
     ob2.getValueQuantity().setSystem("http://unitsofmeasure.org");
     ob2.getValueQuantity().setUnit("kg");
     ob2.getValueQuantity().setValue(68.2);
-    medmorphReport.addEntry().setResource(ob2);
+    contentBundle.addEntry().setResource(ob2);
+    medmorphReport.addEntry().setResource(contentBundle);
+
+    Organization organization = new Organization();
+    organization.setId(orgId);
+    List<Identifier> ids = new ArrayList<Identifier>();
+    Identifier ccnId = new Identifier();
+    ccnId.setSystem("http://cibmtr.org/codesystem/transplant-center");
+    ccnId.setValue(expectedCcn);
+    ids.add(ccnId);
+    organization.setIdentifier(ids);
+    medmorphReport.addEntry().setResource(organization);
 
     medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/");
   }

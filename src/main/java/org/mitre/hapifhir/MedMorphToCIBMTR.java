@@ -43,16 +43,19 @@ public class MedMorphToCIBMTR {
   public void convert(Bundle medmorphReport, MessageHeader messageHeader, String authToken) {
     // https://fhir.nmdp.org/ig/cibmtr-reporting/CIBMTR_Direct_FHIR_API_Connection_Guide_STU3.pdf
     if (medmorphReport.hasEntry()) {
-      List<BundleEntryComponent> entriesList = medmorphReport.getEntry();
-      BundleEntryComponent patientEntry = entriesList.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Patient).findAny().orElse(null);
-      String ccn = getCcn(entriesList, messageHeader);
+      List<BundleEntryComponent> reportEntries = medmorphReport.getEntry();
+      // Content bundle should be 2nd entry in report bundle
+      Bundle contentBundle = (Bundle) reportEntries.get(1).getResource();
+      List<BundleEntryComponent> contentEntries = contentBundle.getEntry();
+      BundleEntryComponent patientEntry = contentEntries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Patient).findAny().orElse(null);
+      String ccn = getCcn(reportEntries, messageHeader);
       if (patientEntry == null || ccn == null) return;
 
       Patient patient = (Patient) patientEntry.getResource();
       Number crid = getCrid(authToken, ccn, patient);
       String resourceId = postPatient(authToken, ccn, crid.toString());
 
-      if (resourceId != null) postBundle(authToken, ccn, entriesList, resourceId);
+      if (resourceId != null) postBundle(authToken, ccn, contentEntries, resourceId);
     }
   }
 
