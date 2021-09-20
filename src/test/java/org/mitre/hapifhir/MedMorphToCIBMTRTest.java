@@ -34,7 +34,7 @@ public class MedMorphToCIBMTRTest {
   String expectedCrid = "1982897480019337";
   String expectedResourceId = "8557319952834071";
   String expectedCcn = "12001";
-  String orgReference = "Organization/test-org";
+  String orgId = "test-org";
 
   @Before
   public void setUp() {
@@ -43,7 +43,7 @@ public class MedMorphToCIBMTRTest {
     messageHeader = new MessageHeader();
     messageHeader.setSource(new MessageHeader.MessageSourceComponent()
       .setEndpoint("http://localhost:4444/fhir"));
-    messageHeader.setSender(new Reference().setReference(orgReference));
+    messageHeader.setSender(new Reference().setReference("Organization/" + orgId));
     medmorphReport.addEntry().setResource(messageHeader);
 
     Bundle contentBundle = new Bundle();
@@ -77,7 +77,7 @@ public class MedMorphToCIBMTRTest {
     medmorphReport.addEntry().setResource(contentBundle);
 
     Organization organization = new Organization();
-    organization.setId(orgReference);
+    organization.setId(orgId);
     List<Identifier> ids = new ArrayList<Identifier>();
     Identifier ccnId = new Identifier();
     ccnId.setSystem("http://cibmtr.org/codesystem/transplant-center");

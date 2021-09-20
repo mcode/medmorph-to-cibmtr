@@ -214,9 +214,12 @@ public class MedMorphToCIBMTR {
     // Assuming the organization reference is 'Organization/id'
     if (!orgReference.contains("Organization/")) return null;
     String orgId = orgReference.substring(13);
+
+    // HAPI sometimes includes the resource type in the ID so we need to make 2 comparisons to the entry id
     BundleEntryComponent orgEntry = bundleEntries.stream().filter(entry ->
       entry.getResource().getId() != null
-      && entry.getResource().getId().equals(orgReference)
+      && (entry.getResource().getId().equals(orgReference)
+      || entry.getResource().getId().equals(orgId))
     ).findAny().orElse(null);
     if (orgEntry == null) return null;
 
