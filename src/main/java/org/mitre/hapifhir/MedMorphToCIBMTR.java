@@ -1,58 +1,66 @@
 package org.mitre.hapifhir;
 
-import java.util.List;
-import java.util.Map;
-import java.net.URL;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
-import org.hl7.fhir.r4.model.Bundle;
-import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
-import org.hl7.fhir.r4.model.Resource;
-import org.hl7.fhir.r4.model.ResourceType;
-import org.hl7.fhir.r4.model.Patient;
-import org.hl7.fhir.r4.model.Observation;
-import org.hl7.fhir.r4.model.CodeableConcept;
-import org.hl7.fhir.r4.model.Coding;
-import org.hl7.fhir.r4.model.Quantity;
-import org.json.JSONObject;
-import org.json.JSONArray;
+import java.net.URL;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.http.HttpEntity;
-import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
-import java.util.stream.Collectors;
+import org.hl7.fhir.r4.model.Bundle;
+import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
+import org.hl7.fhir.r4.model.CodeableConcept;
+import org.hl7.fhir.r4.model.Coding;
+import org.hl7.fhir.r4.model.Identifier;
+import org.hl7.fhir.r4.model.MessageHeader;
+import org.hl7.fhir.r4.model.Observation;
+import org.hl7.fhir.r4.model.Organization;
+import org.hl7.fhir.r4.model.Patient;
+import org.hl7.fhir.r4.model.Quantity;
+import org.hl7.fhir.r4.model.Reference;
+import org.hl7.fhir.r4.model.Resource;
+import org.hl7.fhir.r4.model.ResourceType;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MedMorphToCIBMTR {
+  private static final String CCN_SYSTEM = "http://cibmtr.org/codesystem/transplant-center";
+  private static final String CRID_SYSTEM = "http://cibmtr.org/identifier/CRID";
   private String cibmtrUrl;
-  private String ccn;
 
-  public MedMorphToCIBMTR(String cibmtrUrl, String ccn) {
+  public MedMorphToCIBMTR(String cibmtrUrl) {
     this.cibmtrUrl = cibmtrUrl;
     if (!this.cibmtrUrl.endsWith("/")) this.cibmtrUrl += "/";
-    this.ccn = ccn;
   }
 
-  public void convert(Bundle medmorphReport, String authToken) {
+  public void convert(Bundle medmorphReport, MessageHeader messageHeader, String authToken) {
     // https://fhir.nmdp.org/ig/cibmtr-reporting/CIBMTR_Direct_FHIR_API_Connection_Guide_STU3.pdf
     if (medmorphReport.hasEntry()) {
-      List<BundleEntryComponent> entriesList = medmorphReport.getEntry();
-      BundleEntryComponent patientEntry = entriesList.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Patient).findAny().orElse(null);
-      if (patientEntry == null) return;
+      List<BundleEntryComponent> reportEntries = medmorphReport.getEntry();
+      // Content bundle should be 2nd entry in report bundle
+      Bundle contentBundle = (Bundle) reportEntries.get(1).getResource();
+      List<BundleEntryComponent> contentEntries = contentBundle.getEntry();
+      BundleEntryComponent patientEntry = contentEntries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Patient).findAny().orElse(null);
+      String ccn = getCcn(reportEntries, messageHeader);
+      if (patientEntry == null || ccn == null) return;
 
       Patient patient = (Patient) patientEntry.getResource();
-      Number crid = getCrid(authToken, patient);
-      String resourceId = postPatient(authToken, crid.toString());
+      Number crid = getCrid(authToken, ccn, patient);
+      String resourceId = postPatient(authToken, ccn, crid.toString());
 
-      if (resourceId != null) postBundle(authToken, entriesList, resourceId);
+      if (resourceId != null) postBundle(authToken, ccn, contentEntries, resourceId);
     }
   }
 
   // Register patient with CIBMTR and returns CRID
-  protected Number getCrid(String authToken, Patient patient) {
+  protected Number getCrid(String authToken, String ccn, Patient patient) {
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPut httpPut = new HttpPut(cibmtrUrl + "CRID");
       httpPut.setHeader("Accept", "application/json");
@@ -87,7 +95,7 @@ public class MedMorphToCIBMTR {
   }
 
   // POST Patient resource with CRID and return resource id
-  protected String postPatient(String authToken, String crid) {
+  protected String postPatient(String authToken, String ccn, String crid) {
     if (crid == null) return null;
 
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
@@ -97,12 +105,12 @@ public class MedMorphToCIBMTR {
 
       JSONObject patientRequestBody = new JSONObject();
       patientRequestBody.put("resourceType", "Patient");
-      patientRequestBody.put("meta", getMeta());
+      patientRequestBody.put("meta", getMeta(ccn));
       patientRequestBody.put("text", (new JSONObject()).put("status", "empty"));
       JSONArray identifierArray = new JSONArray();
       JSONObject identifierObject = new JSONObject();
       identifierObject.put("use", "official");
-      identifierObject.put("system", "http://cibmtr.org/identifier/CRID");
+      identifierObject.put("system", CRID_SYSTEM);
       identifierObject.put("value", crid);
       identifierArray.put(identifierObject);
       patientRequestBody.put("identifier", identifierArray);
@@ -127,7 +135,7 @@ public class MedMorphToCIBMTR {
   }
 
   // Post bundle of observations
-  protected void postBundle(String authToken, List<BundleEntryComponent> entries, String resourceId) {
+  protected void postBundle(String authToken, String ccn, List<BundleEntryComponent> entries, String resourceId) {
     List<BundleEntryComponent> observationEntries = entries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Observation).collect(Collectors.toList());
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Bundle");
@@ -137,7 +145,7 @@ public class MedMorphToCIBMTR {
       JSONObject bundleRequestBody = new JSONObject();
       bundleRequestBody.put("resourceType", "Bundle");
       bundleRequestBody.put("type", "transaction");
-      bundleRequestBody.put("entry", getObservationEntries(observationEntries, resourceId));
+      bundleRequestBody.put("entry", getObservationEntries(ccn, observationEntries, resourceId));
 
       StringEntity stringEntity = new StringEntity(bundleRequestBody.toString());
       httpPost.setEntity(stringEntity);
@@ -147,7 +155,7 @@ public class MedMorphToCIBMTR {
     }
   }
 
-  protected JSONArray getObservationEntries(List<BundleEntryComponent> observationEntries, String resourceId) {
+  protected JSONArray getObservationEntries(String ccn, List<BundleEntryComponent> observationEntries, String resourceId) {
     JSONArray entryArray = new JSONArray();
 
     for (BundleEntryComponent entry : observationEntries) {
@@ -160,7 +168,7 @@ public class MedMorphToCIBMTR {
       Observation observation = (Observation)entry.getResource();
       JSONObject observationResourceObject = new JSONObject();
       observationResourceObject.put("resourceType", "Observation");
-      observationResourceObject.put("meta", getMeta());
+      observationResourceObject.put("meta", getMeta(ccn));
       observationResourceObject.put("subject", (new JSONObject()).put("reference", "Patient/" + resourceId));
       observationResourceObject.put("effectiveDateTime", observation.getEffectiveDateTimeType().dateTimeValue().getValue());
       CodeableConcept code = observation.getCode();
@@ -186,15 +194,47 @@ public class MedMorphToCIBMTR {
     return entryArray;
   }
 
-  protected JSONObject getMeta() {
+  protected JSONObject getMeta(String ccn) {
     JSONObject metaObject = new JSONObject();
     JSONArray securityArray = new JSONArray();
     JSONObject securityObject = new JSONObject();
-    securityObject.put("system", "http://cibmtr.org/codesystem/transplant-center");
+    securityObject.put("system", CCN_SYSTEM);
     securityObject.put("code", "rc_" + ccn);
     securityArray.put(securityObject);
     metaObject.put("security", securityArray);
 
     return metaObject;
+  }
+
+  // Extracts CCN from MessageHeader.sender.identifier
+  protected String getCcn(List<BundleEntryComponent> bundleEntries, MessageHeader messageHeader) {
+    Reference sender = messageHeader.getSender();
+    String orgReference = sender.getReference();
+
+    // Assuming the organization reference is 'Organization/id'
+    if (!orgReference.contains("Organization/")) return null;
+    String orgId = orgReference.substring(13);
+
+    // HAPI sometimes includes the resource type in the ID so we need to make 2 comparisons to the entry id
+    BundleEntryComponent orgEntry = bundleEntries.stream().filter(entry ->
+      entry.getResource().getId() != null
+      && (entry.getResource().getId().equals(orgReference)
+      || entry.getResource().getId().equals(orgId))
+    ).findAny().orElse(null);
+    if (orgEntry == null) return null;
+
+    Organization orgResource = (Organization) orgEntry.getResource();
+    List<Identifier> ids = orgResource.getIdentifier();
+    if (ids != null) {
+      for (Identifier id : ids) {
+        String system = id.getSystem();
+        String value = id.getValue();
+        if (system != null && value != null) {
+          if (system.equals(CCN_SYSTEM)) return value;
+        }
+      }
+    }
+
+    return null;
   }
 }
