@@ -216,7 +216,7 @@ public class MedMorphToCIBMTR {
     String orgId = orgReference.substring(13);
     BundleEntryComponent orgEntry = bundleEntries.stream().filter(entry ->
       entry.getResource().getId() != null
-      && entry.getResource().getId().equals(orgId)
+      && entry.getResource().getId().equals(orgReference)
     ).findAny().orElse(null);
     if (orgEntry == null) return null;
 
@@ -227,7 +227,7 @@ public class MedMorphToCIBMTR {
         String system = id.getSystem();
         String value = id.getValue();
         if (system != null && value != null) {
-          if (system == CCN_SYSTEM) return value;
+          if (system.equals(CCN_SYSTEM)) return value;
         }
       }
     }
