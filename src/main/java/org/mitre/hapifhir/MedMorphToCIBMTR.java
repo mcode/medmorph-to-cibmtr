@@ -119,7 +119,7 @@ public class MedMorphToCIBMTR {
       httpPost.setEntity(stringEntity);
       ResponseHandler<String> responseHandler = response -> {
         int status = response.getStatusLine().getStatusCode();
-        if (status == 200) {
+        if (status == 200 || status == 201) {
           String location = response.getFirstHeader("Location").getValue();
           int index = location.indexOf("Patient/");
           if (index > 0) return location.substring(index + 8);
