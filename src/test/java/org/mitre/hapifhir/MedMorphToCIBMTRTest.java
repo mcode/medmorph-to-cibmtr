@@ -117,6 +117,17 @@ public class MedMorphToCIBMTRTest {
   }
 
   @Test
+  public void postPatientExistsTest() {
+    // Test for when patient resource already exists
+    stubFor(get(urlMatching("/Patient\\?(.)+"))
+      .willReturn(aResponse()
+        .withBody("{\"total\":1,\"entry\":[{\"resource\":{\"id\":\""+expectedResourceId+"\"}}]}")));
+
+    String actualResourceId = medmorphToCIBMTR.postPatient("", expectedCcn, expectedCrid);
+    assertEquals(expectedResourceId, actualResourceId);
+  }
+
+  @Test
   public void getMetaTest() {
     JSONObject metaObject = medmorphToCIBMTR.getMeta(expectedCcn);
     JSONArray securityArray = metaObject.getJSONArray("security");

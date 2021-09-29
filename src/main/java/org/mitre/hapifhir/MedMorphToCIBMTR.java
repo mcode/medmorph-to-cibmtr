@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.http.HttpEntity;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.ResponseHandler;
@@ -99,6 +100,26 @@ public class MedMorphToCIBMTR {
     if (crid == null) return null;
 
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+      // Check if patient has already been submitted
+      HttpGet httpGet = new HttpGet(cibmtrUrl + "Patient?_security=" + CCN_SYSTEM + "%7Crc_" + ccn + "&identifier=" + crid);
+      httpGet.setHeader("Content-Type", "application/fhir+json");
+      httpGet.setHeader("Authorization", authToken);
+      ResponseHandler<String> getResponseHandler = response -> {
+        int status = response.getStatusLine().getStatusCode();
+        if (status != 200) return null;
+        HttpEntity entity = response.getEntity();
+        return entity != null ? EntityUtils.toString(entity) : null;
+      };
+      String responseBody = httpClient.execute(httpGet, getResponseHandler);
+      if (responseBody != null) {
+        JSONObject responseObj = new JSONObject(responseBody.toString());
+        if (responseObj.getInt("total") > 0) {
+          // Return patient resource id if patient exists
+          return responseObj.getJSONArray("entry").getJSONObject(0).getJSONObject("resource").getString("id");
+        }
+      }
+
+      // Post patient if it doesn't exist
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Patient");
       httpPost.setHeader("Content-Type", "application/fhir+json");
       httpPost.setHeader("Authorization", authToken);
@@ -117,7 +138,7 @@ public class MedMorphToCIBMTR {
 
       StringEntity stringEntity = new StringEntity(patientRequestBody.toString());
       httpPost.setEntity(stringEntity);
-      ResponseHandler<String> responseHandler = response -> {
+      ResponseHandler<String> postResponseHandler = response -> {
         int status = response.getStatusLine().getStatusCode();
         if (status == 200 || status == 201) {
           String location = response.getFirstHeader("Location").getValue();
@@ -128,7 +149,7 @@ public class MedMorphToCIBMTR {
         return null;
       };
 
-      return httpClient.execute(httpPost, responseHandler);
+      return httpClient.execute(httpPost, postResponseHandler);
     } catch (Exception e) {
       return null;
     }
