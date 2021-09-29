@@ -166,7 +166,12 @@ public class MedMorphToCIBMTR {
       JSONObject bundleRequestBody = new JSONObject();
       bundleRequestBody.put("resourceType", "Bundle");
       bundleRequestBody.put("type", "transaction");
-      bundleRequestBody.put("entry", getObservationEntries(httpClient, authToken, ccn, observationEntries, resourceId));
+      JSONArray observationArray = getObservationEntries(httpClient, authToken, ccn, observationEntries, resourceId);
+      if (observationArray.isEmpty()) {
+        // Don't post bundle if there are no observations to post
+        return;
+      }
+      bundleRequestBody.put("entry", observationArray);
 
       StringEntity stringEntity = new StringEntity(bundleRequestBody.toString());
       httpPost.setEntity(stringEntity);
@@ -196,7 +201,7 @@ public class MedMorphToCIBMTR {
       if (responseBody != null) {
         JSONObject responseObj = new JSONObject(responseBody.toString());
         if (responseObj.getInt("total") > 0) {
-          // Don't post this observation if it already exists
+          // Don't add this observation if it already exists
           continue;
         }
       }
