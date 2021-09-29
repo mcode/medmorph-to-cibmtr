@@ -4,6 +4,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.Rule;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import com.github.tomakehurst.wiremock.junit.WireMockRule;
 import java.util.List;
@@ -117,13 +118,16 @@ public class MedMorphToCIBMTRTest {
   }
 
   @Test
-  public void postPatientExistsTest() {
+  public void checkIfPatientExistsTest() {
+    // Should be null since patient should not exist
+    String actualResourceId = medmorphToCIBMTR.checkIfPatientExists("", expectedCcn, expectedCrid);
+    assertNull(actualResourceId);
+
     // Test for when patient resource already exists
     stubFor(get(urlMatching("/Patient\\?(.)+"))
       .willReturn(aResponse()
         .withBody("{\"total\":1,\"entry\":[{\"resource\":{\"id\":\""+expectedResourceId+"\"}}]}")));
-
-    String actualResourceId = medmorphToCIBMTR.postPatient("", expectedCcn, expectedCrid);
+    actualResourceId = medmorphToCIBMTR.checkIfPatientExists("", expectedCcn, expectedCrid);
     assertEquals(expectedResourceId, actualResourceId);
   }
 
