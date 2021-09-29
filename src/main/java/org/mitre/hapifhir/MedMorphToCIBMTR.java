@@ -166,7 +166,7 @@ public class MedMorphToCIBMTR {
       JSONObject bundleRequestBody = new JSONObject();
       bundleRequestBody.put("resourceType", "Bundle");
       bundleRequestBody.put("type", "transaction");
-      bundleRequestBody.put("entry", getObservationEntries(ccn, observationEntries, resourceId));
+      bundleRequestBody.put("entry", getObservationEntries(httpClient, authToken, ccn, observationEntries, resourceId));
 
       StringEntity stringEntity = new StringEntity(bundleRequestBody.toString());
       httpPost.setEntity(stringEntity);
@@ -176,10 +176,31 @@ public class MedMorphToCIBMTR {
     }
   }
 
-  protected JSONArray getObservationEntries(String ccn, List<BundleEntryComponent> observationEntries, String resourceId) {
+  protected JSONArray getObservationEntries(CloseableHttpClient httpClient, String authToken, String ccn, List<BundleEntryComponent> observationEntries, String resourceId) throws Exception {
     JSONArray entryArray = new JSONArray();
 
     for (BundleEntryComponent entry : observationEntries) {
+      // If observation already exists on server, skip posting of resource
+      if (!entry.hasFullUrl()) continue;
+      String fullUrl = entry.getFullUrl();
+      HttpGet httpGet = new HttpGet(cibmtrUrl + "Observation?identifier=" + fullUrl);
+      httpGet.setHeader("Content-Type", "application/fhir+json");
+      httpGet.setHeader("Authorization", authToken);
+      ResponseHandler<String> getResponseHandler = response -> {
+        int status = response.getStatusLine().getStatusCode();
+        if (status != 200) return null;
+        HttpEntity entity = response.getEntity();
+        return entity != null ? EntityUtils.toString(entity) : null;
+      };
+      String responseBody = httpClient.execute(httpGet, getResponseHandler);
+      if (responseBody != null) {
+        JSONObject responseObj = new JSONObject(responseBody.toString());
+        if (responseObj.getInt("total") > 0) {
+          // Don't post this observation if it already exists
+          continue;
+        }
+      }
+
       JSONObject observationObject = new JSONObject();
       JSONObject requestObject = new JSONObject();
       requestObject.put("method", "POST");
@@ -208,6 +229,9 @@ public class MedMorphToCIBMTR {
       quantityObject.put("system", quantity.getSystem());
       quantityObject.put("code", quantity.getCode());
       observationResourceObject.put("valueQuantity", quantityObject);
+      JSONObject identifierObject = new JSONObject();
+      identifierObject.put("value", fullUrl);
+      observationResourceObject.put("identifier", (new JSONArray()).put(identifierObject));
       observationObject.put("resource", observationResourceObject);
       entryArray.put(observationObject);
     }
