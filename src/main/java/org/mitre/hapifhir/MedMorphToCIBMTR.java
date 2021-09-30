@@ -34,6 +34,7 @@ import org.json.JSONObject;
 public class MedMorphToCIBMTR {
   private static final String CCN_SYSTEM = "http://cibmtr.org/codesystem/transplant-center";
   private static final String CRID_SYSTEM = "http://cibmtr.org/identifier/CRID";
+  private static final String RESOURCE_IDENTIFIER_SYSTEM = "urn:ietf:rfc:3986";
   private String cibmtrUrl;
 
   public MedMorphToCIBMTR(String cibmtrUrl) {
@@ -246,6 +247,8 @@ public class MedMorphToCIBMTR {
       quantityObject.put("code", quantity.getCode());
       observationResourceObject.put("valueQuantity", quantityObject);
       JSONObject identifierObject = new JSONObject();
+      identifierObject.put("use", "official");
+      identifierObject.put("system", RESOURCE_IDENTIFIER_SYSTEM);
       identifierObject.put("value", fullUrl);
       observationResourceObject.put("identifier", (new JSONArray()).put(identifierObject));
       observationObject.put("resource", observationResourceObject);
