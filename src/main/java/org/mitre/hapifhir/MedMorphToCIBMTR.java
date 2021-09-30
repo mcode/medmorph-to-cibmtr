@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.http.HttpEntity;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.ResponseHandler;
@@ -33,6 +34,7 @@ import org.json.JSONObject;
 public class MedMorphToCIBMTR {
   private static final String CCN_SYSTEM = "http://cibmtr.org/codesystem/transplant-center";
   private static final String CRID_SYSTEM = "http://cibmtr.org/identifier/CRID";
+  private static final String RESOURCE_IDENTIFIER_SYSTEM = "urn:ietf:rfc:3986";
   private String cibmtrUrl;
 
   public MedMorphToCIBMTR(String cibmtrUrl) {
@@ -53,9 +55,15 @@ public class MedMorphToCIBMTR {
 
       Patient patient = (Patient) patientEntry.getResource();
       Number crid = getCrid(authToken, ccn, patient);
-      String resourceId = postPatient(authToken, ccn, crid.toString());
+      if (crid == null) return;
+      String resourceId = checkIfPatientExists(authToken, ccn, crid.toString());
+      boolean isPatientNew = false;
+      if (resourceId == null) {
+        isPatientNew = true;
+        resourceId = postPatient(authToken, ccn, crid.toString());
+      }
 
-      if (resourceId != null) postBundle(authToken, ccn, contentEntries, resourceId);
+      if (resourceId != null) postBundle(authToken, ccn, contentEntries, resourceId, isPatientNew);
     }
   }
 
@@ -94,10 +102,37 @@ public class MedMorphToCIBMTR {
     return null;
   }
 
+  private ResponseHandler<String> getResponseHandler = response -> {
+    int status = response.getStatusLine().getStatusCode();
+    if (status != 200) return null;
+    HttpEntity entity = response.getEntity();
+    return entity != null ? EntityUtils.toString(entity) : null;
+  };
+
+  protected String checkIfPatientExists(String authToken, String ccn, String crid) {
+    try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+      // Check if patient has already been submitted
+      HttpGet httpGet = new HttpGet(cibmtrUrl + "Patient?_security=" + CCN_SYSTEM + "%7Crc_" + ccn + "&identifier=" + crid);
+      httpGet.setHeader("Content-Type", "application/fhir+json");
+      httpGet.setHeader("Authorization", authToken);
+
+      String responseBody = httpClient.execute(httpGet, getResponseHandler);
+      if (responseBody != null) {
+        JSONObject responseObj = new JSONObject(responseBody.toString());
+        if (responseObj.getInt("total") > 0) {
+          // Return patient resource id if patient exists
+          return responseObj.getJSONArray("entry").getJSONObject(0).getJSONObject("resource").getString("id");
+        }
+      }
+
+      return null;
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
   // POST Patient resource with CRID and return resource id
   protected String postPatient(String authToken, String ccn, String crid) {
-    if (crid == null) return null;
-
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Patient");
       httpPost.setHeader("Content-Type", "application/fhir+json");
@@ -135,7 +170,7 @@ public class MedMorphToCIBMTR {
   }
 
   // Post bundle of observations
-  protected void postBundle(String authToken, String ccn, List<BundleEntryComponent> entries, String resourceId) {
+  protected void postBundle(String authToken, String ccn, List<BundleEntryComponent> entries, String resourceId, boolean isPatientNew) {
     List<BundleEntryComponent> observationEntries = entries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Observation).collect(Collectors.toList());
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Bundle");
@@ -145,7 +180,12 @@ public class MedMorphToCIBMTR {
       JSONObject bundleRequestBody = new JSONObject();
       bundleRequestBody.put("resourceType", "Bundle");
       bundleRequestBody.put("type", "transaction");
-      bundleRequestBody.put("entry", getObservationEntries(ccn, observationEntries, resourceId));
+      JSONArray observationArray = getObservationEntries(httpClient, authToken, ccn, observationEntries, resourceId, isPatientNew);
+      if (observationArray.isEmpty()) {
+        // Don't post bundle if there are no observations to post
+        return;
+      }
+      bundleRequestBody.put("entry", observationArray);
 
       StringEntity stringEntity = new StringEntity(bundleRequestBody.toString());
       httpPost.setEntity(stringEntity);
@@ -155,10 +195,29 @@ public class MedMorphToCIBMTR {
     }
   }
 
-  protected JSONArray getObservationEntries(String ccn, List<BundleEntryComponent> observationEntries, String resourceId) {
+  protected JSONArray getObservationEntries(CloseableHttpClient httpClient, String authToken, String ccn, List<BundleEntryComponent> observationEntries, String resourceId, boolean isPatientNew) throws Exception {
     JSONArray entryArray = new JSONArray();
 
     for (BundleEntryComponent entry : observationEntries) {
+      // If observation already exists on server, skip posting of resource
+      if (!entry.hasFullUrl()) continue;
+      String fullUrl = entry.getFullUrl();
+
+      // Only check if patient isn't new
+      if (!isPatientNew) {
+        HttpGet httpGet = new HttpGet(cibmtrUrl + "Observation?identifier=" + fullUrl);
+        httpGet.setHeader("Content-Type", "application/fhir+json");
+        httpGet.setHeader("Authorization", authToken);
+        String responseBody = httpClient.execute(httpGet, getResponseHandler);
+        if (responseBody != null) {
+          JSONObject responseObj = new JSONObject(responseBody.toString());
+          if (responseObj.getInt("total") > 0) {
+            // Don't add this observation if it already exists
+            continue;
+          }
+        }
+      }
+
       JSONObject observationObject = new JSONObject();
       JSONObject requestObject = new JSONObject();
       requestObject.put("method", "POST");
@@ -187,6 +246,11 @@ public class MedMorphToCIBMTR {
       quantityObject.put("system", quantity.getSystem());
       quantityObject.put("code", quantity.getCode());
       observationResourceObject.put("valueQuantity", quantityObject);
+      JSONObject identifierObject = new JSONObject();
+      identifierObject.put("use", "official");
+      identifierObject.put("system", RESOURCE_IDENTIFIER_SYSTEM);
+      identifierObject.put("value", fullUrl);
+      observationResourceObject.put("identifier", (new JSONArray()).put(identifierObject));
       observationObject.put("resource", observationResourceObject);
       entryArray.put(observationObject);
     }

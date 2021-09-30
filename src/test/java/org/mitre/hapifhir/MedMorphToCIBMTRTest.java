@@ -4,6 +4,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.Rule;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import com.github.tomakehurst.wiremock.junit.WireMockRule;
 import java.util.List;
@@ -89,13 +90,6 @@ public class MedMorphToCIBMTRTest {
     medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/");
   }
 
-  // Uncomment the test below to post bundle to test service hosted on pathways.mitre.org
-  // @Test
-  // public void convertTest() {
-  //   MedMorphToCIBMTR testService = new MedMorphToCIBMTR("http://pathways.mitre.org:4444/");
-  //   testService.convert(medmorphReport, messageHeader, "");
-  // }
-
   @Test
   public void getCridTest() {
     stubFor(put(urlMatching("/CRID"))
@@ -113,6 +107,20 @@ public class MedMorphToCIBMTRTest {
         .withHeader("Location", "http://localhost:4444/Patient/" + expectedResourceId)));
 
     String actualResourceId = medmorphToCIBMTR.postPatient("", expectedCcn, expectedCrid);
+    assertEquals(expectedResourceId, actualResourceId);
+  }
+
+  @Test
+  public void checkIfPatientExistsTest() {
+    // Should be null since patient should not exist
+    String actualResourceId = medmorphToCIBMTR.checkIfPatientExists("", expectedCcn, expectedCrid);
+    assertNull(actualResourceId);
+
+    // Test for when patient resource already exists
+    stubFor(get(urlMatching("/Patient\\?(.)+"))
+      .willReturn(aResponse()
+        .withBody("{\"total\":1,\"entry\":[{\"resource\":{\"id\":\""+expectedResourceId+"\"}}]}")));
+    actualResourceId = medmorphToCIBMTR.checkIfPatientExists("", expectedCcn, expectedCrid);
     assertEquals(expectedResourceId, actualResourceId);
   }
 
