@@ -90,13 +90,6 @@ public class MedMorphToCIBMTRTest {
     medmorphToCIBMTR = new MedMorphToCIBMTR("http://localhost:4444/");
   }
 
-  // Uncomment the test below to post bundle to test service hosted on pathways.mitre.org
-  // @Test
-  // public void convertTest() {
-  //   MedMorphToCIBMTR testService = new MedMorphToCIBMTR("http://pathways.mitre.org:4444/");
-  //   testService.convert(medmorphReport, messageHeader, "");
-  // }
-
   @Test
   public void getCridTest() {
     stubFor(put(urlMatching("/CRID"))
