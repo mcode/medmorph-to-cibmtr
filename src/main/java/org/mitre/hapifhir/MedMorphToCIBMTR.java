@@ -22,6 +22,8 @@ import org.hl7.fhir.r4.model.Coding;
 import org.hl7.fhir.r4.model.Identifier;
 import org.hl7.fhir.r4.model.MessageHeader;
 import org.hl7.fhir.r4.model.Observation;
+import org.hl7.fhir.r4.model.OperationOutcome;
+import org.hl7.fhir.r4.model.OperationOutcome.OperationOutcomeIssueComponent;
 import org.hl7.fhir.r4.model.Organization;
 import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.Quantity;
@@ -42,7 +44,7 @@ public class MedMorphToCIBMTR {
     if (!this.cibmtrUrl.endsWith("/")) this.cibmtrUrl += "/";
   }
 
-  public void convert(Bundle medmorphReport, MessageHeader messageHeader, String authToken) {
+  public OperationOutcome convert(Bundle medmorphReport, MessageHeader messageHeader, String authToken) {
     // https://fhir.nmdp.org/ig/cibmtr-reporting/CIBMTR_Direct_FHIR_API_Connection_Guide_STU3.pdf
     if (medmorphReport.hasEntry()) {
       List<BundleEntryComponent> reportEntries = medmorphReport.getEntry();
@@ -51,11 +53,11 @@ public class MedMorphToCIBMTR {
       List<BundleEntryComponent> contentEntries = contentBundle.getEntry();
       BundleEntryComponent patientEntry = contentEntries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Patient).findAny().orElse(null);
       String ccn = getCcn(reportEntries, messageHeader);
-      if (patientEntry == null || ccn == null) return;
+      if (patientEntry == null || ccn == null) return createOperationOutcome("required", "Patient resource and Organization resource with ccn value are required in report bundle.");
 
       Patient patient = (Patient) patientEntry.getResource();
       Number crid = getCrid(authToken, ccn, patient);
-      if (crid == null) return;
+      if (crid == null) return createOperationOutcome("processing", "Request for CRID was not successful.");;
       String resourceId = checkIfPatientExists(authToken, ccn, crid.toString());
       boolean isPatientNew = false;
       if (resourceId == null) {
@@ -63,8 +65,10 @@ public class MedMorphToCIBMTR {
         resourceId = postPatient(authToken, ccn, crid.toString());
       }
 
-      if (resourceId != null) postBundle(authToken, ccn, contentEntries, resourceId, isPatientNew);
+      if (resourceId == null) return createOperationOutcome("processing", "Posting Patient resource and retrieving resource ID was not successful.");
+      postBundle(authToken, ccn, contentEntries, resourceId, isPatientNew);
     }
+    return null;
   }
 
   // Register patient with CIBMTR and returns CRID
@@ -300,5 +304,15 @@ public class MedMorphToCIBMTR {
     }
 
     return null;
+  }
+
+  private OperationOutcome createOperationOutcome(String code, String diagnostics) {
+    OperationOutcome result = new OperationOutcome();
+    OperationOutcomeIssueComponent issue = result.addIssue();
+    issue.getSeverityElement().setValueAsString("error");
+    issue.setCode(OperationOutcome.IssueType.fromCode(code));
+    issue.setDiagnostics(diagnostics);
+
+    return result;
   }
 }
