@@ -1,16 +1,14 @@
 package org.mitre.hapifhir;
 
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.http.HttpEntity;
+import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpPut;
-import org.apache.http.client.ResponseHandler;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
@@ -28,7 +26,6 @@ import org.hl7.fhir.r4.model.Organization;
 import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.Quantity;
 import org.hl7.fhir.r4.model.Reference;
-import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.ResourceType;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -53,26 +50,39 @@ public class MedMorphToCIBMTR {
       List<BundleEntryComponent> contentEntries = contentBundle.getEntry();
       BundleEntryComponent patientEntry = contentEntries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Patient).findAny().orElse(null);
       String ccn = getCcn(reportEntries, messageHeader);
-      if (patientEntry == null || ccn == null) return createOperationOutcome("required", "Patient resource and Organization resource with ccn value are required in report bundle.");
+      if (patientEntry == null || ccn == null) return createOperationOutcome("required", "Patient resource and Organization resource with ccn value are required in report bundle.", null);
 
       Patient patient = (Patient) patientEntry.getResource();
-      Number crid = getCrid(authToken, ccn, patient);
-      if (crid == null) return createOperationOutcome("processing", "Request for CRID was not successful.");;
+      Number crid;
+      try {
+        crid = getCrid(authToken, ccn, patient);
+      } catch (Exception e) {
+        return createOperationOutcome("processing", "Request for CRID was not successful.", e);
+      }
+      
       String resourceId = checkIfPatientExists(authToken, ccn, crid.toString());
       boolean isPatientNew = false;
       if (resourceId == null) {
         isPatientNew = true;
-        resourceId = postPatient(authToken, ccn, crid.toString());
+        try {
+          resourceId = postPatient(authToken, ccn, crid.toString());
+        } catch (Exception e) {
+          return createOperationOutcome("processing", "Posting Patient resource and retrieving resource ID was not successful.", e);
+        }
       }
 
-      if (resourceId == null) return createOperationOutcome("processing", "Posting Patient resource and retrieving resource ID was not successful.");
-      postBundle(authToken, ccn, contentEntries, resourceId, isPatientNew);
+      if (resourceId == null) return createOperationOutcome("processing", "Posting Patient resource and retrieving resource ID was not successful.", null);
+      try {
+        postBundle(authToken, ccn, contentEntries, resourceId, isPatientNew);
+      } catch (Exception e) {
+        return createOperationOutcome("processing", "Posting Observations as a Bundle was not successful.", e);
+      }
     }
     return null;
   }
 
   // Register patient with CIBMTR and returns CRID
-  protected Number getCrid(String authToken, String ccn, Patient patient) {
+  protected Number getCrid(String authToken, String ccn, Patient patient) throws Exception {
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPut httpPut = new HttpPut(cibmtrUrl + "CRID");
       httpPut.setHeader("Accept", "application/json");
@@ -99,11 +109,8 @@ public class MedMorphToCIBMTR {
       JSONObject responseObj = new JSONObject(responseBody.toString());
       JSONArray perfectMatch = responseObj.getJSONArray("perfectMatch");
       if (!perfectMatch.isEmpty()) return perfectMatch.getJSONObject(0).getNumber("crid");
-    } catch (Exception e) {
-      return null;
-    }
-
-    return null;
+      throw new Exception("Unexpected CRID response format: " + responseBody);
+    } 
   }
 
   private ResponseHandler<String> getResponseHandler = response -> {
@@ -136,7 +143,7 @@ public class MedMorphToCIBMTR {
   }
 
   // POST Patient resource with CRID and return resource id
-  protected String postPatient(String authToken, String ccn, String crid) {
+  protected String postPatient(String authToken, String ccn, String crid) throws Exception {
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Patient");
       httpPost.setHeader("Content-Type", "application/fhir+json");
@@ -168,13 +175,11 @@ public class MedMorphToCIBMTR {
       };
 
       return httpClient.execute(httpPost, responseHandler);
-    } catch (Exception e) {
-      return null;
     }
   }
 
   // Post bundle of observations
-  protected void postBundle(String authToken, String ccn, List<BundleEntryComponent> entries, String resourceId, boolean isPatientNew) {
+  protected void postBundle(String authToken, String ccn, List<BundleEntryComponent> entries, String resourceId, boolean isPatientNew) throws Exception {
     List<BundleEntryComponent> observationEntries = entries.stream().filter(entry -> entry.getResource().getResourceType() == ResourceType.Observation).collect(Collectors.toList());
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpPost httpPost = new HttpPost(cibmtrUrl + "Bundle");
@@ -194,8 +199,6 @@ public class MedMorphToCIBMTR {
       StringEntity stringEntity = new StringEntity(bundleRequestBody.toString());
       httpPost.setEntity(stringEntity);
       httpClient.execute(httpPost);
-    } catch (Exception e) {
-      return;
     }
   }
 
@@ -306,11 +309,14 @@ public class MedMorphToCIBMTR {
     return null;
   }
 
-  private OperationOutcome createOperationOutcome(String code, String diagnostics) {
+  private OperationOutcome createOperationOutcome(String code, String diagnostics, Exception e) {
     OperationOutcome result = new OperationOutcome();
     OperationOutcomeIssueComponent issue = result.addIssue();
     issue.getSeverityElement().setValueAsString("error");
     issue.setCode(OperationOutcome.IssueType.fromCode(code));
+    if (e != null) {
+      diagnostics = diagnostics + "\n" + e.getMessage() + "\n" + ExceptionUtils.getStackTrace(e);
+    }
     issue.setDiagnostics(diagnostics);
 
     return result;

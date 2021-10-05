@@ -91,7 +91,7 @@ public class MedMorphToCIBMTRTest {
   }
 
   @Test
-  public void getCridTest() {
+  public void getCridTest() throws Exception {
     stubFor(put(urlMatching("/CRID"))
       .willReturn(aResponse()
         .withBody("{\"perfectMatch\":[{\"matchedCriteria\":[\"firstName\",\"lastName\",\"gender\",\"birthDate\"],\"matchType\":\"Perfect1\",\"crid\":1982897480019337}]}")));
@@ -101,7 +101,7 @@ public class MedMorphToCIBMTRTest {
   }
 
   @Test
-  public void postPatientTest() {
+  public void postPatientTest() throws Exception {
     stubFor(post(urlMatching("/Patient"))
       .willReturn(aResponse()
         .withHeader("Location", "http://localhost:4444/Patient/" + expectedResourceId)));
