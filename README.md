@@ -26,14 +26,14 @@ This project can be added to an existing Maven-based project, add this dependenc
 <dependency>
   <groupId>org.mitre.hapifhir</groupId>
   <artifactId>medmorph-to-cibmtr</artifactId>
-  <version>0.0.6</version>
+  <version>0.0.7</version>
 </dependency>
 ```
 
 Or for a Gradle-based project, add this to `build.gradle`:
 
 ```gradle
-compile 'org.mitre.hapifhir:medmorph-to-cibmtr:0.0.6'
+compile 'org.mitre.hapifhir:medmorph-to-cibmtr:0.0.7'
 ```
 
 ## Usage
@@ -53,14 +53,14 @@ To install the current working version to your local Maven repo, run
 To publish new versions to Maven Central, first update the version in `build.gradle`:
 
 ```gradle
-def mavenVersion = '0.0.6'
+def mavenVersion = '0.0.7'
 ```
 
 Then tag the version as appropriate in GitHub, for example:
 
 ```sh
-git tag v0.0.6
-git push origin v0.0.6
+git tag v0.0.7
+git push origin v0.0.7
 ```
 
 The CI process `deploy.yml` will run to publish the new version.

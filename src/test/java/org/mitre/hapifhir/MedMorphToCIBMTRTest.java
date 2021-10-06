@@ -111,7 +111,7 @@ public class MedMorphToCIBMTRTest {
   }
 
   @Test
-  public void checkIfPatientExistsTest() {
+  public void checkIfPatientExistsTest() throws Exception {
     // Should be null since patient should not exist
     String actualResourceId = medmorphToCIBMTR.checkIfPatientExists("", expectedCcn, expectedCrid);
     assertNull(actualResourceId);
@@ -126,7 +126,7 @@ public class MedMorphToCIBMTRTest {
 
   @Test
   public void getMetaTest() {
-    JSONObject metaObject = medmorphToCIBMTR.getMeta(expectedCcn);
+    JSONObject metaObject = medmorphToCIBMTR.buildMeta(expectedCcn);
     JSONArray securityArray = metaObject.getJSONArray("security");
     JSONObject securityObject = securityArray.getJSONObject(0);
     assertEquals(securityObject.getString("code"), "rc_" + expectedCcn);
